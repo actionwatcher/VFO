@@ -26,7 +26,7 @@ class Rotary
 public:
     Rotary(char, char);
     // Process pin(s)
-    uint8_t process();
+    uint8_t process(const uint8_t val);
 private:
     uint8_t state;
     uint8_t pin1;

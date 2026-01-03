@@ -116,9 +116,8 @@ Rotary::Rotary(char _pin1, char _pin2) {
     state = R_START;
 }
 
-uint8_t Rotary::process() {
+uint8_t Rotary::process(const uint8_t val) {
     // Grab state of input pins.
-    uint8_t val = PIND;
     uint8_t pinstate = (val & (1 << pin1)) ? 1 : 0;
     pinstate |= (val & (1 << pin2)) ? 2 : 0;
     // Determine new state from the pins and state table.
