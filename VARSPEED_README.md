@@ -17,8 +17,16 @@ The implementation uses **Timer1** as a hardware counter to measure the time bet
 
 ## Technical Details
 
-### Timer Configuration
-- **Timer**: Timer1 (16-bit)
+### Design Principle
+The Rotary class **does not own the timer**. The caller is responsible for:
+- Setting up the timer hardware
+- Reading the timer value
+- Passing the timer value to `processWithSpeed()`
+
+This separation of concerns makes the class more flexible and reusable.
+
+### Timer Configuration (Recommended)
+- **Timer**: Timer1 (16-bit) - but any timer/counter can be used
 - **Prescaler**: 8 (on 16MHz Arduino)
 - **Frequency**: 2 MHz (0.5µs per tick)
 - **Overflow**: Every ~32.768ms
@@ -55,14 +63,18 @@ static constexpr uint16_t MULT_VERY_FAST = 100;
 
 ### Initialization
 
-Add timer initialization to `setup()`:
+Set up your timer in `setup()`:
 
 ```cpp
 void setup() {
     // ... other setup code ...
 
     // Initialize Timer1 for velocity tracking
-    Rotary::initTimer();
+    // Setup Timer1 as a free-running counter at 2MHz
+    TCCR1A = 0;
+    TCCR1B = 0;
+    TCCR1B = (1 << CS11);  // Prescaler 8: 16MHz / 8 = 2MHz
+    TCNT1 = 0;
 
     // ... rest of setup ...
 }
@@ -70,19 +82,22 @@ void setup() {
 
 ### In ISR
 
-Use `processWithSpeed()` instead of `process()`:
+Pass the timer value to `processWithSpeed()`:
 
 ```cpp
 ISR(PCINT2_vect) {
     uint8_t val = PIND;
 
-    int16_t speedMultiplier = rotary.processWithSpeed(val);
+    // Read timer and pass to processWithSpeed
+    int16_t speedMultiplier = rotary.processWithSpeed(val, TCNT1);
     if (speedMultiplier != 0) {
         // Positive = CW, Negative = CCW
         currentFreq += (int64_t)deltaFreq * speedMultiplier;
     }
 }
 ```
+
+**Note**: You can use any timer/counter source. Just pass the current counter value to `processWithSpeed()`. The class uses unsigned arithmetic, so timer overflow is handled automatically.
 
 ### Debugging
 

@@ -28,12 +28,10 @@ public:
     // Process pin(s)
     uint8_t process(const uint8_t val);
 
-    // Initialize Timer1 for velocity tracking (call once in setup)
-    static void initTimer();
-
     // Process with velocity-based multiplier
+    // timerValue: current timer counter value (e.g., TCNT1)
     // Returns: signed multiplier (positive for CW, negative for CCW, 0 for no movement)
-    int16_t processWithSpeed(const uint8_t val);
+    int16_t processWithSpeed(const uint8_t val, uint16_t timerValue);
 
     // Get current speed multiplier (for debugging)
     uint16_t getMultiplier() const { return currentMultiplier; }

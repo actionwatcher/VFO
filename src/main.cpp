@@ -55,7 +55,11 @@ void setup() {
   Serial.begin(9600);
 
   // Initialize Timer1 for velocity tracking
-  Rotary::initTimer();
+  // Setup Timer1 as a free-running counter at 2MHz (prescaler 8 on 16MHz Arduino)
+  TCCR1A = 0;
+  TCCR1B = 0;
+  TCCR1B = (1 << CS11);  // Prescaler 8: 16MHz / 8 = 2MHz (0.5µs per tick)
+  TCNT1 = 0;
 
   // enable interrupts on the CLK and DT pins
   PCICR |= (1 << PCIE2);    // Enable PCINT2 interrupt
@@ -84,8 +88,8 @@ ISR(PCINT2_vect) {
   uint8_t val = PIND;
   key_state = val & (1 << KEY);
 
-  // Use variable speed processing
-  int16_t speedMultiplier = rotary.processWithSpeed(val);
+  // Use variable speed processing - pass current timer value
+  int16_t speedMultiplier = rotary.processWithSpeed(val, TCNT1);
   if (speedMultiplier != 0) {
     // speedMultiplier is already signed (positive for CW, negative for CCW)
     currentFreq += (int64_t)deltaFreq * speedMultiplier;

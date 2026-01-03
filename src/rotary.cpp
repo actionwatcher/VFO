@@ -132,24 +132,6 @@ uint8_t Rotary::process(const uint8_t val) {
 }
 
 /*
- * Initialize Timer1 for velocity tracking
- * Sets up Timer1 as a free-running counter at 2MHz (prescaler 8 on 16MHz Arduino)
- * Call this once in setup()
- */
-void Rotary::initTimer() {
-    // Stop Timer1
-    TCCR1A = 0;
-    TCCR1B = 0;
-
-    // Set prescaler to 8: 16MHz / 8 = 2MHz (0.5µs per tick)
-    // Timer will overflow every ~32.768ms (65536 * 0.5µs)
-    TCCR1B = (1 << CS11);
-
-    // Start counter at 0
-    TCNT1 = 0;
-}
-
-/*
  * Calculate speed multiplier based on step interval
  * Smaller interval = faster rotation = higher multiplier
  */
@@ -169,21 +151,19 @@ uint16_t Rotary::calculateMultiplier() {
 
 /*
  * Process encoder with velocity-based acceleration
+ * timerValue: current timer counter value (passed by caller)
  * Returns signed multiplier: positive for CW, negative for CCW, 0 for no movement
  */
-int16_t Rotary::processWithSpeed(const uint8_t val) {
+int16_t Rotary::processWithSpeed(const uint8_t val, uint16_t timerValue) {
     // First, process the encoder state machine
     uint8_t result = process(val);
 
     // If we detected a step
     if (result != DIR_NONE) {
-        // Read Timer1 counter (fast, atomic operation on AVR)
-        uint16_t now = TCNT1;
-
         // Calculate interval since last step
         // Unsigned arithmetic handles timer overflow automatically
-        stepInterval = now - lastTimerValue;
-        lastTimerValue = now;
+        stepInterval = timerValue - lastTimerValue;
+        lastTimerValue = timerValue;
 
         // Calculate multiplier based on rotation speed
         currentMultiplier = calculateMultiplier();
@@ -191,7 +171,7 @@ int16_t Rotary::processWithSpeed(const uint8_t val) {
         // Return signed multiplier
         if (result == DIR_CW) {
             return currentMultiplier;
-        } else if (result == DIR_CCW) {
+        } else {
             return -currentMultiplier;
         }
     }
