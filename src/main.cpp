@@ -19,6 +19,31 @@ volatile uint8_t key_state = 1;
 uint8_t prevKeyState = 0; // init to different value to force update on start
 Rotary rotary(DT, CLK);
 String currentDir = "";
+uint8_t displayPrecision = 3; // number of digits after second dot
+
+// Format frequency with dot separators
+// decimals: number of digits to show after the second dot (0 = hide them)
+String formatFrequency(unsigned long freq, uint8_t decimals = displayPrecision) {
+  String result = "";
+  String freqStr = String(freq);
+  int len = freqStr.length();
+
+  // If decimals < 3, truncate the number
+  if (decimals < 3 && len > 3) {
+    int truncateDigits = 3 - decimals;
+    len -= truncateDigits;
+    freqStr = freqStr.substring(0, len);
+  }
+
+  for (int i = 0; i < len; i++) {
+    result += freqStr[i];
+    int remaining = len - i - 1;
+    if (remaining > 0 && remaining % 3 == 0) {
+      result += '.';
+    }
+  }
+  return result;
+}
 
 void setup() {
   // Set encoder pins as inputs
@@ -42,10 +67,6 @@ void setup() {
   oled.setFont(Adafruit5x7); // Set font
   oled.clear();
   oled.set2X(); 
-  oled.setCursor(0, 0);
-  oled.print("Dir: ");
-  oled.setCursor(0, 2);
-  oled.print("Freq: ");
 
   bool success = si5351.init(SI5351_CRYSTAL_LOAD_8PF, 0, 0);
   
@@ -73,25 +94,20 @@ ISR(PCINT2_vect) {
 }
 
 void loop() {
-  if (prevFreq != currentFreq || key_state != prevKeyState) {
-    prevFreq = currentFreq;
+  constexpr int w = 11;
+
+  if (key_state != prevKeyState) {
     prevKeyState = key_state;
-    si5351.output_enable(SI5351_CLK0, key_state? 0 : 1 ); // Enable output
+    si5351.output_enable(SI5351_CLK0, prevKeyState? 0 : 1 );
+    oled.setCursor(0, 0);
+    oled.print(prevKeyState ? "RX  " : "  TX");
+  }
+    
+  if (prevFreq != currentFreq) {
+    prevFreq = currentFreq;
     si5351.set_freq(currentFreq, SI5351_CLK0);
-    // Simulate some processing delay
-    Serial.print("Direction: ");
-    Serial.print(currentDir);
-    Serial.print(" | Counter: ");
-    unsigned long displayFreq = currentFreq;
-    Serial.println(displayFreq);
-    auto w = 11;
-    oled.setCursor(6*w, 0);
-    oled.clearToEOL();
-    oled.setCursor(6*w, 0);
-    oled.print(key_state ? "OFF " : "ON ");
-    oled.setCursor(6*w, 2);
-    oled.clearToEOL();
-    oled.setCursor(6*w, 2);
-    oled.print(displayFreq);
+    unsigned long displayFreq = currentFreq/100;
+    oled.setCursor(w, 2);
+    oled.print(formatFrequency(displayFreq));
   }
 }
