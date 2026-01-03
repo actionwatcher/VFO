@@ -100,11 +100,18 @@ const uint8_t ttable[7][4] = {
 
 /*
  * Constructor. Each arg is the pin number for each encoder contact.
+ * ppr: Pulses per revolution (default 20). Common values: 16, 20, 24, 100, 250, 600
+ *
+ * Thresholds are scaled based on PPR:
+ * - Higher PPR (e.g., 250) = more pulses = shorter time between pulses at same speed
+ * - Thresholds are scaled proportionally to maintain same feel across encoders
  */
-Rotary::Rotary(char _pin1, char _pin2) {
+Rotary::Rotary(char _pin1, char _pin2, uint16_t ppr) {
     // Assign variables.
     pin1 = _pin1;
     pin2 = _pin2;
+    pulsesPerRev = ppr;
+
     // Set pins to input.
     pinMode(pin1, INPUT);
     pinMode(pin2, INPUT);
@@ -119,6 +126,15 @@ Rotary::Rotary(char _pin1, char _pin2) {
     lastTimerValue = 0;
     stepInterval = 0xFFFF;  // Start with max interval (slowest speed)
     currentMultiplier = MULT_SLOW;
+
+    // Scale thresholds based on encoder PPR
+    // Formula: threshold = BASE_THRESHOLD * (BASE_PPR / actualPPR)
+    // Example: 250 PPR encoder has 12.5x more pulses than 20 PPR
+    //          So thresholds should be 12.5x smaller (divide by 12.5)
+    thresholdSlow = (uint32_t)BASE_THRESHOLD_SLOW * BASE_PPR / ppr;
+    thresholdMedium = (uint32_t)BASE_THRESHOLD_MEDIUM * BASE_PPR / ppr;
+    thresholdFast = (uint32_t)BASE_THRESHOLD_FAST * BASE_PPR / ppr;
+    thresholdVeryFast = (uint32_t)BASE_THRESHOLD_VERY_FAST * BASE_PPR / ppr;
 }
 
 uint8_t Rotary::process(const uint8_t val) {
@@ -134,18 +150,19 @@ uint8_t Rotary::process(const uint8_t val) {
 /*
  * Calculate speed multiplier based on step interval
  * Smaller interval = faster rotation = higher multiplier
+ * Thresholds are scaled based on encoder PPR set in constructor
  */
 uint16_t Rotary::calculateMultiplier() {
-    if (stepInterval < THRESHOLD_VERY_FAST) {
-        return MULT_VERY_FAST;  // Very fast: < 0.5ms
-    } else if (stepInterval < THRESHOLD_FAST) {
-        return MULT_FAST;       // Fast: 0.5-1ms
-    } else if (stepInterval < THRESHOLD_MEDIUM) {
-        return MULT_MEDIUM;     // Medium: 1-2ms
-    } else if (stepInterval < THRESHOLD_SLOW) {
-        return MULT_FAST;       // Slow-medium: 2-4ms (use medium mult)
+    if (stepInterval < thresholdVeryFast) {
+        return MULT_VERY_FAST;  // Very fast
+    } else if (stepInterval < thresholdFast) {
+        return MULT_FAST;       // Fast
+    } else if (stepInterval < thresholdMedium) {
+        return MULT_MEDIUM;     // Medium
+    } else if (stepInterval < thresholdSlow) {
+        return MULT_FAST;       // Slow-medium
     } else {
-        return MULT_SLOW;       // Very slow: > 4ms
+        return MULT_SLOW;       // Very slow
     }
 }
 
@@ -165,15 +182,7 @@ int16_t Rotary::processWithSpeed(const uint8_t val, uint16_t timerValue) {
         stepInterval = timerValue - lastTimerValue;
         lastTimerValue = timerValue;
 
-        // Calculate multiplier based on rotation speed
-        currentMultiplier = calculateMultiplier();
-
-        // Return signed multiplier
-        if (result == DIR_CW) {
-            return currentMultiplier;
-        } else {
-            return -currentMultiplier;
-        }
+        return (result == DIR_CW) ? calculateMultiplier() : -calculateMultiplier();
     }
 
     return 0;  // No movement

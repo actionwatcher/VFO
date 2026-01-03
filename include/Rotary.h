@@ -24,7 +24,7 @@
 class Rotary
 {
 public:
-    Rotary(char, char);
+    Rotary(char pin1, char pin2, uint16_t ppr = 20);
     // Process pin(s)
     uint8_t process(const uint8_t val);
 
@@ -42,17 +42,27 @@ private:
     uint8_t pin1;
     uint8_t pin2;
 
-    // Velocity tracking using Timer1
+    // Velocity tracking
     uint16_t lastTimerValue;
     uint16_t stepInterval;
     uint16_t currentMultiplier;
 
-    // Tunable acceleration thresholds (in Timer1 ticks at 2MHz: 0.5µs per tick)
-    // These values are for 16MHz Arduino
-    static constexpr uint16_t THRESHOLD_SLOW = 8000;    // ~4ms - slow turning
-    static constexpr uint16_t THRESHOLD_MEDIUM = 4000;  // ~2ms - medium speed
-    static constexpr uint16_t THRESHOLD_FAST = 2000;    // ~1ms - fast turning
-    static constexpr uint16_t THRESHOLD_VERY_FAST = 1000; // ~0.5ms - very fast
+    // Encoder pulses per revolution (PPR)
+    uint16_t pulsesPerRev;
+
+    // Base thresholds for 20 PPR encoder (in Timer1 ticks at 2MHz: 0.5µs per tick)
+    // These get scaled based on actual encoder PPR
+    static constexpr uint16_t BASE_THRESHOLD_SLOW = 8000;      // ~4ms - slow turning
+    static constexpr uint16_t BASE_THRESHOLD_MEDIUM = 4000;    // ~2ms - medium speed
+    static constexpr uint16_t BASE_THRESHOLD_FAST = 2000;      // ~1ms - fast turning
+    static constexpr uint16_t BASE_THRESHOLD_VERY_FAST = 1000; // ~0.5ms - very fast
+    static constexpr uint16_t BASE_PPR = 20;  // Reference encoder: 20 pulses/rev
+
+    // Scaled thresholds (calculated in constructor based on PPR)
+    uint16_t thresholdSlow;
+    uint16_t thresholdMedium;
+    uint16_t thresholdFast;
+    uint16_t thresholdVeryFast;
 
     // Speed multipliers
     static constexpr uint16_t MULT_SLOW = 1;

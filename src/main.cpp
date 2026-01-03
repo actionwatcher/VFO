@@ -17,8 +17,7 @@ auto prevFreq = currentFreq+1; // init to different value to force update on sta
 auto deltaFreq = 100ULL; // Frequency step: 1 Hz
 volatile uint8_t key_state = 1;
 uint8_t prevKeyState = 0; // init to different value to force update on start
-Rotary rotary(DT, CLK);
-String currentDir = "";
+Rotary rotary(DT, CLK, 250);  // 250 PPR encoder
 uint8_t displayPrecision = 3; // number of digits after second dot
 
 // Format frequency with dot separators
@@ -93,12 +92,6 @@ ISR(PCINT2_vect) {
   if (speedMultiplier != 0) {
     // speedMultiplier is already signed (positive for CW, negative for CCW)
     currentFreq += (int64_t)deltaFreq * speedMultiplier;
-
-    if (speedMultiplier > 0) {
-      currentDir = "CW ";
-    } else {
-      currentDir = "CCW";
-    }
   }
 }
 
