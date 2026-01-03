@@ -54,6 +54,9 @@ void setup() {
   // Setup Serial Monitor
   Serial.begin(9600);
 
+  // Initialize Timer1 for velocity tracking
+  Rotary::initTimer();
+
   // enable interrupts on the CLK and DT pins
   PCICR |= (1 << PCIE2);    // Enable PCINT2 interrupt
   PCMSK2 |= (1 << PCINT18); // Enable interrupt for pin D3 (DT)
@@ -66,10 +69,10 @@ void setup() {
   oled.begin(&Adafruit128x32, I2C_ADDRESS); // Or &Adafruit128x32
   oled.setFont(Adafruit5x7); // Set font
   oled.clear();
-  oled.set2X(); 
+  oled.set2X();
 
   bool success = si5351.init(SI5351_CRYSTAL_LOAD_8PF, 0, 0);
-  
+
   if (!success) {
     Serial.println("Si5351 Init failed");
     while (1);
@@ -80,14 +83,16 @@ void setup() {
 ISR(PCINT2_vect) {
   uint8_t val = PIND;
   key_state = val & (1 << KEY);
-  auto result = rotary.process(val);
-  if (result) {
-    if (result == DIR_CW) {
 
-      currentFreq += deltaFreq;
+  // Use variable speed processing
+  int16_t speedMultiplier = rotary.processWithSpeed(val);
+  if (speedMultiplier != 0) {
+    // speedMultiplier is already signed (positive for CW, negative for CCW)
+    currentFreq += (int64_t)deltaFreq * speedMultiplier;
+
+    if (speedMultiplier > 0) {
       currentDir = "CW ";
     } else {
-      currentFreq -= deltaFreq;
       currentDir = "CCW";
     }
   }

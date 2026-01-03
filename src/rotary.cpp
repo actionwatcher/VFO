@@ -114,6 +114,11 @@ Rotary::Rotary(char _pin1, char _pin2) {
 #endif
     // Initialise state.
     state = R_START;
+
+    // Initialize velocity tracking
+    lastTimerValue = 0;
+    stepInterval = 0xFFFF;  // Start with max interval (slowest speed)
+    currentMultiplier = MULT_SLOW;
 }
 
 uint8_t Rotary::process(const uint8_t val) {
@@ -124,4 +129,72 @@ uint8_t Rotary::process(const uint8_t val) {
     state = ttable[state & 0xf][pinstate];
     // Return emit bits, ie the generated event.
     return state & 0x30;
+}
+
+/*
+ * Initialize Timer1 for velocity tracking
+ * Sets up Timer1 as a free-running counter at 2MHz (prescaler 8 on 16MHz Arduino)
+ * Call this once in setup()
+ */
+void Rotary::initTimer() {
+    // Stop Timer1
+    TCCR1A = 0;
+    TCCR1B = 0;
+
+    // Set prescaler to 8: 16MHz / 8 = 2MHz (0.5µs per tick)
+    // Timer will overflow every ~32.768ms (65536 * 0.5µs)
+    TCCR1B = (1 << CS11);
+
+    // Start counter at 0
+    TCNT1 = 0;
+}
+
+/*
+ * Calculate speed multiplier based on step interval
+ * Smaller interval = faster rotation = higher multiplier
+ */
+uint16_t Rotary::calculateMultiplier() {
+    if (stepInterval < THRESHOLD_VERY_FAST) {
+        return MULT_VERY_FAST;  // Very fast: < 0.5ms
+    } else if (stepInterval < THRESHOLD_FAST) {
+        return MULT_FAST;       // Fast: 0.5-1ms
+    } else if (stepInterval < THRESHOLD_MEDIUM) {
+        return MULT_MEDIUM;     // Medium: 1-2ms
+    } else if (stepInterval < THRESHOLD_SLOW) {
+        return MULT_FAST;       // Slow-medium: 2-4ms (use medium mult)
+    } else {
+        return MULT_SLOW;       // Very slow: > 4ms
+    }
+}
+
+/*
+ * Process encoder with velocity-based acceleration
+ * Returns signed multiplier: positive for CW, negative for CCW, 0 for no movement
+ */
+int16_t Rotary::processWithSpeed(const uint8_t val) {
+    // First, process the encoder state machine
+    uint8_t result = process(val);
+
+    // If we detected a step
+    if (result != DIR_NONE) {
+        // Read Timer1 counter (fast, atomic operation on AVR)
+        uint16_t now = TCNT1;
+
+        // Calculate interval since last step
+        // Unsigned arithmetic handles timer overflow automatically
+        stepInterval = now - lastTimerValue;
+        lastTimerValue = now;
+
+        // Calculate multiplier based on rotation speed
+        currentMultiplier = calculateMultiplier();
+
+        // Return signed multiplier
+        if (result == DIR_CW) {
+            return currentMultiplier;
+        } else if (result == DIR_CCW) {
+            return -currentMultiplier;
+        }
+    }
+
+    return 0;  // No movement
 }
