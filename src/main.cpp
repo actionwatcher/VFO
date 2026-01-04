@@ -20,6 +20,20 @@ uint8_t prevKeyState = 0; // init to different value to force update on start
 Rotary rotary(DT, CLK, 250);  // 250 PPR encoder
 uint8_t displayPrecision = 3; // number of digits after second dot
 
+// TX/RX control
+// Timer1 configuration for delay calculation
+constexpr uint32_t F_CPU_HZ = 16000000UL;  // Arduino Uno clock frequency
+constexpr uint8_t TIMER1_PRESCALER = 8;     // Timer1 prescaler value
+constexpr uint32_t TIMER1_FREQ = F_CPU_HZ / TIMER1_PRESCALER;  // 2MHz
+constexpr uint16_t TX_DELAY_MS = 50;       // Desired TX delay in milliseconds
+// Calculate timer ticks for desired delay: (TIMER1_FREQ / 1000) * TX_DELAY_MS
+// For 50ms at 2MHz: (2000000 / 1000) * 50 = 100,000 ticks
+// Timer1 is 16-bit (max 65535), so we need overflow handling
+constexpr uint32_t TX_DELAY_TICKS_FULL = (TIMER1_FREQ / 1000UL) * TX_DELAY_MS;
+constexpr uint16_t TX_DELAY_TICKS = (uint16_t)(TX_DELAY_TICKS_FULL & 0xFFFF);  // Wrap to 16-bit
+volatile uint16_t keyPressTime = 0;  // Timer1 value when key was pressed
+volatile bool txDelayActive = false;  // Flag indicating we're in delay period
+
 // Format frequency with dot separators
 // decimals: number of digits to show after the second dot (0 = hide them)
 String formatFrequency(unsigned long freq, uint8_t decimals = displayPrecision) {
@@ -49,6 +63,10 @@ void setup() {
   pinMode(CLK, INPUT);
   pinMode(DT, INPUT);
   pinMode(KEY, INPUT_PULLUP);
+
+  // Set TRANSMIT pin as output
+  pinMode(TRANSMIT_PIN, OUTPUT);
+  digitalWrite(TRANSMIT_PIN, LOW);  // Start in RX mode
 
   // Setup Serial Monitor
   Serial.begin(9600);
@@ -100,9 +118,29 @@ void loop() {
 
   if (key_state != prevKeyState) {
     prevKeyState = key_state;
-    si5351.output_enable(SI5351_CLK0, prevKeyState? 0 : 1 );
-    oled.setCursor(0, 0);
-    oled.print(prevKeyState ? "RX  " : "  TX");
+
+    if (prevKeyState) {
+      // Key released - going to RX mode
+      si5351.output_enable(SI5351_CLK0, 0);  // Stop signal generation
+      digitalWrite(TRANSMIT_PIN, LOW);        // TRANSMIT pin LOW
+      txDelayActive = false;
+      oled.setCursor(0, 0);
+      oled.print("RX  ");
+    } else {
+      // Key pressed - start TX delay
+      keyPressTime = TCNT1;
+      txDelayActive = true;
+      oled.setCursor(0, 0);
+      oled.print("  TX");
+    }
+  }
+
+  // Handle TX delay using Timer1
+  // Unsigned arithmetic handles timer overflow automatically
+  if (txDelayActive && ((uint16_t)(TCNT1 - keyPressTime) >= TX_DELAY_TICKS)) {
+    txDelayActive = false;
+    digitalWrite(TRANSMIT_PIN, HIGH);       // TRANSMIT pin HIGH
+    si5351.output_enable(SI5351_CLK0, 1);   // Start signal generation
   }
     
   if (prevFreq != currentFreq) {
