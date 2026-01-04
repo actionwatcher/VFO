@@ -106,45 +106,35 @@ const uint8_t ttable[7][4] = {
  * - Higher PPR (e.g., 250) = more pulses = shorter time between pulses at same speed
  * - Thresholds are scaled proportionally to maintain same feel across encoders
  */
-Rotary::Rotary(char _pin1, char _pin2, uint16_t ppr) {
-    // Assign variables.
-    pin1 = _pin1;
-    pin2 = _pin2;
-    pulsesPerRev = ppr;
-
+Rotary::Rotary(char pin1, char pin2, uint16_t ppr)
+    : _state(R_START)
+    , _pin1(pin1)
+    , _pin2(pin2)
+    , _lastTimerValue(0)
+    , _currentMultiplier(MULT_SLOW)
+    , _pulsesPerRev(ppr)
+    , _thresholdSlow((uint32_t)BASE_THRESHOLD_SLOW * BASE_PPR / ppr)
+    , _thresholdMedium((uint32_t)BASE_THRESHOLD_MEDIUM * BASE_PPR / ppr)
+    , _thresholdFast((uint32_t)BASE_THRESHOLD_FAST * BASE_PPR / ppr)
+    , _thresholdVeryFast((uint32_t)BASE_THRESHOLD_VERY_FAST * BASE_PPR / ppr)
+{
     // Set pins to input.
-    pinMode(pin1, INPUT);
-    pinMode(pin2, INPUT);
+    pinMode(_pin1, INPUT);
+    pinMode(_pin2, INPUT);
 #ifdef ENABLE_PULLUPS
-    pinMode(pin1, INPUT_PULLUP);
-    pinMode(pin2, INPUT_PULLUP);
+    pinMode(_pin1, INPUT_PULLUP);
+    pinMode(_pin2, INPUT_PULLUP);
 #endif
-    // Initialise state.
-    state = R_START;
-
-    // Initialize velocity tracking
-    lastTimerValue = 0;
-    stepInterval = 0xFFFF;  // Start with max interval (slowest speed)
-    currentMultiplier = MULT_SLOW;
-
-    // Scale thresholds based on encoder PPR
-    // Formula: threshold = BASE_THRESHOLD * (BASE_PPR / actualPPR)
-    // Example: 250 PPR encoder has 12.5x more pulses than 20 PPR
-    //          So thresholds should be 12.5x smaller (divide by 12.5)
-    thresholdSlow = (uint32_t)BASE_THRESHOLD_SLOW * BASE_PPR / ppr;
-    thresholdMedium = (uint32_t)BASE_THRESHOLD_MEDIUM * BASE_PPR / ppr;
-    thresholdFast = (uint32_t)BASE_THRESHOLD_FAST * BASE_PPR / ppr;
-    thresholdVeryFast = (uint32_t)BASE_THRESHOLD_VERY_FAST * BASE_PPR / ppr;
 }
 
 uint8_t Rotary::process(const uint8_t val) {
     // Grab state of input pins.
-    uint8_t pinstate = (val & (1 << pin1)) ? 1 : 0;
-    pinstate |= (val & (1 << pin2)) ? 2 : 0;
+    uint8_t pinstate = (val & (1 << _pin1)) ? 1 : 0;
+    pinstate |= (val & (1 << _pin2)) ? 2 : 0;
     // Determine new state from the pins and state table.
-    state = ttable[state & 0xf][pinstate];
+    _state = ttable[_state & 0xf][pinstate];
     // Return emit bits, ie the generated event.
-    return state & 0x30;
+    return _state & 0x30;
 }
 
 /*
@@ -152,14 +142,14 @@ uint8_t Rotary::process(const uint8_t val) {
  * Smaller interval = faster rotation = higher multiplier
  * Thresholds are scaled based on encoder PPR set in constructor
  */
-uint16_t Rotary::calculateMultiplier() {
-    if (stepInterval < thresholdVeryFast) {
+uint16_t Rotary::_calculateMultiplier(uint16_t stepInterval) {
+    if (stepInterval < _thresholdVeryFast) {
         return MULT_VERY_FAST;  // Very fast
-    } else if (stepInterval < thresholdFast) {
+    } else if (stepInterval < _thresholdFast) {
         return MULT_FAST;       // Fast
-    } else if (stepInterval < thresholdMedium) {
+    } else if (stepInterval < _thresholdMedium) {
         return MULT_MEDIUM;     // Medium
-    } else if (stepInterval < thresholdSlow) {
+    } else if (stepInterval < _thresholdSlow) {
         return MULT_FAST;       // Slow-medium
     } else {
         return MULT_SLOW;       // Very slow
@@ -179,10 +169,13 @@ int16_t Rotary::processWithSpeed(const uint8_t val, uint16_t timerValue) {
     if (result != DIR_NONE) {
         // Calculate interval since last step
         // Unsigned arithmetic handles timer overflow automatically
-        stepInterval = timerValue - lastTimerValue;
-        lastTimerValue = timerValue;
+        uint16_t stepInterval = timerValue - _lastTimerValue;
+        _lastTimerValue = timerValue;
 
-        return (result == DIR_CW) ? calculateMultiplier() : -calculateMultiplier();
+        // Calculate and store multiplier
+        _currentMultiplier = _calculateMultiplier(stepInterval);
+
+        return (result == DIR_CW) ? _currentMultiplier : -_currentMultiplier;
     }
 
     return 0;  // No movement
