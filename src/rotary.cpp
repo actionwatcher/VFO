@@ -100,28 +100,83 @@ const uint8_t ttable[7][4] = {
 
 /*
  * Constructor. Each arg is the pin number for each encoder contact.
+ * ppr: Pulses per revolution (default 20). Common values: 16, 20, 24, 100, 250, 600
+ *
+ * Thresholds are scaled based on PPR:
+ * - Higher PPR (e.g., 250) = more pulses = shorter time between pulses at same speed
+ * - Thresholds are scaled proportionally to maintain same feel across encoders
  */
-Rotary::Rotary(char _pin1, char _pin2) {
-    // Assign variables.
-    pin1 = _pin1;
-    pin2 = _pin2;
+Rotary::Rotary(char pin1, char pin2, uint16_t ppr)
+    : _state(R_START)
+    , _pin1(pin1)
+    , _pin2(pin2)
+    , _lastTimerValue(0)
+    , _currentMultiplier(MULT_SLOW)
+    , _pulsesPerRev(ppr)
+    , _thresholdSlow((uint32_t)BASE_THRESHOLD_SLOW * BASE_PPR / ppr)
+    , _thresholdMedium((uint32_t)BASE_THRESHOLD_MEDIUM * BASE_PPR / ppr)
+    , _thresholdFast((uint32_t)BASE_THRESHOLD_FAST * BASE_PPR / ppr)
+    , _thresholdVeryFast((uint32_t)BASE_THRESHOLD_VERY_FAST * BASE_PPR / ppr)
+{
     // Set pins to input.
-    pinMode(pin1, INPUT);
-    pinMode(pin2, INPUT);
+    pinMode(_pin1, INPUT);
+    pinMode(_pin2, INPUT);
 #ifdef ENABLE_PULLUPS
-    pinMode(pin1, INPUT_PULLUP);
-    pinMode(pin2, INPUT_PULLUP);
+    pinMode(_pin1, INPUT_PULLUP);
+    pinMode(_pin2, INPUT_PULLUP);
 #endif
-    // Initialise state.
-    state = R_START;
 }
 
 uint8_t Rotary::process(const uint8_t val) {
     // Grab state of input pins.
-    uint8_t pinstate = (val & (1 << pin1)) ? 1 : 0;
-    pinstate |= (val & (1 << pin2)) ? 2 : 0;
+    uint8_t pinstate = (val & (1 << _pin1)) ? 1 : 0;
+    pinstate |= (val & (1 << _pin2)) ? 2 : 0;
     // Determine new state from the pins and state table.
-    state = ttable[state & 0xf][pinstate];
+    _state = ttable[_state & 0xf][pinstate];
     // Return emit bits, ie the generated event.
-    return state & 0x30;
+    return _state & 0x30;
+}
+
+/*
+ * Calculate speed multiplier based on step interval
+ * Smaller interval = faster rotation = higher multiplier
+ * Thresholds are scaled based on encoder PPR set in constructor
+ */
+uint16_t Rotary::_calculateMultiplier(uint16_t stepInterval) {
+    if (stepInterval < _thresholdVeryFast) {
+        return MULT_VERY_FAST;  // Very fast
+    } else if (stepInterval < _thresholdFast) {
+        return MULT_FAST;       // Fast
+    } else if (stepInterval < _thresholdMedium) {
+        return MULT_MEDIUM;     // Medium
+    } else if (stepInterval < _thresholdSlow) {
+        return MULT_FAST;       // Slow-medium
+    } else {
+        return MULT_SLOW;       // Very slow
+    }
+}
+
+/*
+ * Process encoder with velocity-based acceleration
+ * timerValue: current timer counter value (passed by caller)
+ * Returns signed multiplier: positive for CW, negative for CCW, 0 for no movement
+ */
+int16_t Rotary::processWithSpeed(const uint8_t val, uint16_t timerValue) {
+    // First, process the encoder state machine
+    uint8_t result = process(val);
+
+    // If we detected a step
+    if (result != DIR_NONE) {
+        // Calculate interval since last step
+        // Unsigned arithmetic handles timer overflow automatically
+        uint16_t stepInterval = timerValue - _lastTimerValue;
+        _lastTimerValue = timerValue;
+
+        // Calculate and store multiplier
+        _currentMultiplier = _calculateMultiplier(stepInterval);
+
+        return (result == DIR_CW) ? _currentMultiplier : -_currentMultiplier;
+    }
+
+    return 0;  // No movement
 }

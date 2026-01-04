@@ -17,8 +17,7 @@ auto prevFreq = currentFreq+1; // init to different value to force update on sta
 auto deltaFreq = 100ULL; // Frequency step: 1 Hz
 volatile uint8_t key_state = 1;
 uint8_t prevKeyState = 0; // init to different value to force update on start
-Rotary rotary(DT, CLK);
-String currentDir = "";
+Rotary rotary(DT, CLK, 250);  // 250 PPR encoder
 uint8_t displayPrecision = 3; // number of digits after second dot
 
 // Format frequency with dot separators
@@ -54,6 +53,13 @@ void setup() {
   // Setup Serial Monitor
   Serial.begin(9600);
 
+  // Initialize Timer1 for velocity tracking
+  // Setup Timer1 as a free-running counter at 2MHz (prescaler 8 on 16MHz Arduino)
+  TCCR1A = 0;
+  TCCR1B = 0;
+  TCCR1B = (1 << CS11);  // Prescaler 8: 16MHz / 8 = 2MHz (0.5µs per tick)
+  TCNT1 = 0;
+
   // enable interrupts on the CLK and DT pins
   PCICR |= (1 << PCIE2);    // Enable PCINT2 interrupt
   PCMSK2 |= (1 << PCINT18); // Enable interrupt for pin D3 (DT)
@@ -66,10 +72,10 @@ void setup() {
   oled.begin(&Adafruit128x32, I2C_ADDRESS); // Or &Adafruit128x32
   oled.setFont(Adafruit5x7); // Set font
   oled.clear();
-  oled.set2X(); 
+  oled.set2X();
 
   bool success = si5351.init(SI5351_CRYSTAL_LOAD_8PF, 0, 0);
-  
+
   if (!success) {
     Serial.println("Si5351 Init failed");
     while (1);
@@ -80,16 +86,12 @@ void setup() {
 ISR(PCINT2_vect) {
   uint8_t val = PIND;
   key_state = val & (1 << KEY);
-  auto result = rotary.process(val);
-  if (result) {
-    if (result == DIR_CW) {
 
-      currentFreq += deltaFreq;
-      currentDir = "CW ";
-    } else {
-      currentFreq -= deltaFreq;
-      currentDir = "CCW";
-    }
+  // Use variable speed processing - pass current timer value
+  int16_t speedMultiplier = rotary.processWithSpeed(val, TCNT1);
+  if (speedMultiplier != 0) {
+    // speedMultiplier is already signed (positive for CW, negative for CCW)
+    currentFreq += (int64_t)deltaFreq * speedMultiplier;
   }
 }
 
