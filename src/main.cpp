@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <Wire.h>
+#include <EEPROM.h>
 #include "SSD1306Ascii.h"
 #include "SSD1306AsciiWire.h"
 #include "si5351.h"
@@ -10,8 +11,35 @@
 
 #define I2C_ADDRESS 0x3C // Or 0x3D depending on your display
 
+// Band structure
+struct Band {
+    const char* name;
+    const uint64_t defaultFreq;  // VFO frequency (before multiplication)
+    uint64_t lastFreq;           // Runtime value: default or loaded from EEPROM
+    const uint8_t mult;          // Output frequency multiplier
+};
+
+// Band definitions (excluding WARC bands: 30m, 17m, 12m)
+Band bands[] = {
+    { "80m",  350000000ULL,  350000000ULL, 1 },   // 3.5 MHz, no mult
+    { "40m",  700000000ULL,  700000000ULL, 1 },   // 7.0 MHz, no mult
+    { "20m",  700000000ULL,  700000000ULL, 2 },   // 14.0 MHz, VFO at 7MHz
+    { "15m", 1050000000ULL, 1050000000ULL, 2 },   // 21.0 MHz, VFO at 10.5MHz
+    { "10m", 1400000000ULL, 1400000000ULL, 2 },   // 28.0 MHz, VFO at 14MHz
+};
+constexpr uint8_t NUM_BANDS = sizeof(bands) / sizeof(bands[0]);
+
+// Button press types
+enum ButtonPress {
+    BTN_NONE,
+    BTN_BAND_UP,
+    BTN_BAND_DOWN,
+    BTN_TUNE
+};
+
 SSD1306AsciiWire oled;
 Si5351 si5351;
+uint8_t currentBand = 1;  // Start on 40m
 volatile auto currentFreq = 700000000ULL; // Starting frequency: 7000 kHz
 auto prevFreq = currentFreq+1; // init to different value to force update on start
 auto deltaFreq = 100ULL; // Frequency step: 1 Hz
@@ -33,6 +61,69 @@ constexpr uint32_t TX_DELAY_TICKS_FULL = (TIMER1_FREQ / 1000UL) * TX_DELAY_MS;
 constexpr uint16_t TX_DELAY_TICKS = (uint16_t)(TX_DELAY_TICKS_FULL & 0xFFFF);  // Wrap to 16-bit
 volatile uint16_t keyPressTime = 0;  // Timer1 value when key was pressed
 volatile bool txDelayActive = false;  // Flag indicating we're in delay period
+
+// Button handling
+// 50ms debounce at 2MHz = 100,000 ticks, but Timer1 is 16-bit
+// Use shorter debounce that fits: 20ms = 40,000 ticks
+constexpr uint16_t DEBOUNCE_MS = 20;
+constexpr uint16_t DEBOUNCE_TICKS = (uint16_t)((TIMER1_FREQ / 1000UL) * DEBOUNCE_MS);
+uint8_t prevButton = BTN_NONE;
+uint16_t buttonChangeTime = 0;
+bool tuneActive = false;
+
+// EEPROM functions
+// EEPROM memory map:
+//   0-39: Band frequencies (8 bytes each, 5 bands)
+//   40:   Current band index (1 byte)
+constexpr uint16_t EEPROM_BAND_SIZE = 8;
+constexpr uint16_t EEPROM_CURRENT_BAND_ADDR = NUM_BANDS * EEPROM_BAND_SIZE;
+
+void saveBandToEEPROM(uint8_t bandIdx) {
+  uint16_t addr = bandIdx * EEPROM_BAND_SIZE;
+  uint64_t freq = bands[bandIdx].lastFreq;
+  EEPROM.put(addr, freq);
+}
+
+void saveCurrentBandToEEPROM() {
+  EEPROM.update(EEPROM_CURRENT_BAND_ADDR, currentBand);
+}
+
+void loadBandFromEEPROM(uint8_t bandIdx) {
+  uint16_t addr = bandIdx * EEPROM_BAND_SIZE;
+  uint64_t freq;
+  EEPROM.get(addr, freq);
+
+  // Validate frequency (simple range check: 1MHz to 30MHz)
+  if (freq >= 100000000ULL && freq <= 3000000000ULL) {
+    bands[bandIdx].lastFreq = freq;
+  }
+  // If invalid, keep default value
+}
+
+void loadCurrentBandFromEEPROM() {
+  uint8_t band = EEPROM.read(EEPROM_CURRENT_BAND_ADDR);
+  if (band < NUM_BANDS) {
+    currentBand = band;
+  }
+  // If invalid, keep default (40m)
+}
+
+void loadAllBandsFromEEPROM() {
+  for (uint8_t i = 0; i < NUM_BANDS; i++) {
+    loadBandFromEEPROM(i);
+  }
+  loadCurrentBandFromEEPROM();
+}
+
+// Button reading with voltage divider
+// Expected ADC values: BTN1~92, BTN2~205, BTN3~390, NONE~1023
+ButtonPress readButton() {
+  int val = analogRead(BUTTON_PIN);
+  if (val < 150) return BTN_BAND_UP;      // ~92 ± margin
+  if (val < 300) return BTN_BAND_DOWN;    // ~205 ± margin
+  if (val < 500) return BTN_TUNE;         // ~390 ± margin
+  return BTN_NONE;
+}
 
 // Format frequency with dot separators
 // decimals: number of digits to show after the second dot (0 = hide them)
@@ -86,6 +177,12 @@ void setup() {
   // set port D direction to input
   DDRD &= ~((1 << DDD2) | (1 << DDD3) | (1 << DDD4));
 
+  // Load band frequencies from EEPROM
+  loadAllBandsFromEEPROM();
+
+  // Set initial frequency from current band
+  currentFreq = bands[currentBand].lastFreq;
+
   Wire.begin();
   oled.begin(&Adafruit128x32, I2C_ADDRESS); // Or &Adafruit128x32
   oled.setFont(Adafruit5x7); // Set font
@@ -116,6 +213,53 @@ ISR(PCINT2_vect) {
 void loop() {
   constexpr int w = 11;
 
+  // Handle button presses with debouncing
+  ButtonPress btn = readButton();
+  if (btn != prevButton) {
+    uint16_t now = TCNT1;
+    // Check if enough time has passed since last change (debouncing)
+    if ((uint16_t)(now - buttonChangeTime) >= DEBOUNCE_TICKS) {
+      buttonChangeTime = now;
+
+      if (btn == BTN_BAND_UP && prevButton == BTN_NONE) {
+        // Save current band's frequency to EEPROM
+        bands[currentBand].lastFreq = currentFreq;
+        saveBandToEEPROM(currentBand);
+
+        // Move to next band (wrap around)
+        currentBand = (currentBand + 1) % NUM_BANDS;
+        saveCurrentBandToEEPROM();
+        currentFreq = bands[currentBand].lastFreq;
+        prevFreq = currentFreq + 1;  // Force display update
+
+      } else if (btn == BTN_BAND_DOWN && prevButton == BTN_NONE) {
+        // Save current band's frequency to EEPROM
+        bands[currentBand].lastFreq = currentFreq;
+        saveBandToEEPROM(currentBand);
+
+        // Move to previous band (wrap around)
+        currentBand = (currentBand == 0) ? (NUM_BANDS - 1) : (currentBand - 1);
+        saveCurrentBandToEEPROM();
+        currentFreq = bands[currentBand].lastFreq;
+        prevFreq = currentFreq + 1;  // Force display update
+
+      } else if (btn == BTN_TUNE) {
+        // TUNE pressed - enable signal immediately (no TRANSMIT pin, no delay)
+        si5351.output_enable(SI5351_CLK0, 1);
+        tuneActive = true;
+      } else if (tuneActive && btn == BTN_NONE) {
+        // TUNE released - disable signal and save frequency
+        si5351.output_enable(SI5351_CLK0, 0);
+        tuneActive = false;
+        bands[currentBand].lastFreq = currentFreq;
+        saveBandToEEPROM(currentBand);
+      }
+
+      prevButton = btn;
+    }
+  }
+
+  // Handle KEY (morse key) press for TX
   if (key_state != prevKeyState) {
     prevKeyState = key_state;
 
@@ -142,12 +286,17 @@ void loop() {
     digitalWrite(TRANSMIT_PIN, HIGH);       // TRANSMIT pin HIGH
     si5351.output_enable(SI5351_CLK0, 1);   // Start signal generation
   }
-    
+
   if (prevFreq != currentFreq) {
     prevFreq = currentFreq;
+    bands[currentBand].lastFreq = currentFreq;  // Update band's last frequency
     si5351.set_freq(currentFreq, SI5351_CLK0);
-    unsigned long displayFreq = currentFreq/100;
+    unsigned long displayFreq = currentFreq/100 * bands[currentBand].mult;
     oled.setCursor(w, 2);
     oled.print(formatFrequency(displayFreq));
+    // Display band name
+    oled.setCursor(0, 0);
+    oled.print(bands[currentBand].name);
+    oled.print("  ");  // Clear any leftover characters
   }
 }

@@ -5,3 +5,6 @@
 
 // Transmit control output
 #define TRANSMIT_PIN 5
+
+// Button input (analog voltage divider)
+#define BUTTON_PIN A0
