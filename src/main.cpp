@@ -184,7 +184,7 @@ void setup() {
   currentFreq = bands[currentBand].lastFreq;
 
   Wire.begin();
-  oled.begin(&Adafruit128x32, I2C_ADDRESS); // Or &Adafruit128x32
+  oled.begin(&Adafruit128x64, I2C_ADDRESS); // Or &Adafruit128x32
   oled.setFont(Adafruit5x7); // Set font
   oled.clear();
   oled.set2X();
