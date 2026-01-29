@@ -111,7 +111,7 @@ Rotary::Rotary(char pin1, char pin2, uint16_t ppr)
     , _pin1(pin1)
     , _pin2(pin2)
     , _lastTimerValue(0)
-    , _currentMultiplier(MULT_SLOW)
+    , _currentShift(SHIFT_SLOW)
     , _pulsesPerRev(ppr)
     , _thresholdSlow((uint32_t)BASE_THRESHOLD_SLOW * BASE_PPR / ppr)
     , _thresholdMedium((uint32_t)BASE_THRESHOLD_MEDIUM * BASE_PPR / ppr)
@@ -138,45 +138,42 @@ uint8_t Rotary::process(const uint8_t val) {
 }
 
 /*
- * Calculate speed multiplier based on step interval
- * Smaller interval = faster rotation = higher multiplier
+ * Calculate shift amount based on step interval
+ * Smaller interval = faster rotation = higher shift
  * Thresholds are scaled based on encoder PPR set in constructor
  */
-uint16_t Rotary::_calculateMultiplier(uint16_t stepInterval) {
+uint8_t Rotary::_calculateShift(uint16_t stepInterval) {
     if (stepInterval < _thresholdVeryFast) {
-        return MULT_VERY_FAST;  // Very fast
+        Serial.println("Very Fast");
+        return SHIFT_VERY_FAST;  // 16x
     } else if (stepInterval < _thresholdFast) {
-        return MULT_FAST;       // Fast
+        Serial.println("Fast");
+        return SHIFT_FAST;       // 4x
     } else if (stepInterval < _thresholdMedium) {
-        return MULT_MEDIUM;     // Medium
-    } else if (stepInterval < _thresholdSlow) {
-        return MULT_FAST;       // Slow-medium
+        Serial.println("Medium");
+        return SHIFT_MEDIUM;     // 2x
     } else {
-        return MULT_SLOW;       // Very slow
+        Serial.println("Slow");
+        return SHIFT_SLOW;       // 1x
     }
 }
 
 /*
  * Process encoder with velocity-based acceleration
  * timerValue: current timer counter value (passed by caller)
- * Returns signed multiplier: positive for CW, negative for CCW, 0 for no movement
+ * Returns: RotaryResult with direction and shift amount
  */
-int16_t Rotary::processWithSpeed(const uint8_t val, uint16_t timerValue) {
-    // First, process the encoder state machine
-    uint8_t result = process(val);
+RotaryResult Rotary::processWithSpeed(const uint8_t val, uint16_t timerValue) {
+    RotaryResult result;
+    result.direction = process(val);
+    result.shift = 0;
 
-    // If we detected a step
-    if (result != DIR_NONE) {
-        // Calculate interval since last step
-        // Unsigned arithmetic handles timer overflow automatically
+    if (result.direction != DIR_NONE) {
         uint16_t stepInterval = timerValue - _lastTimerValue;
         _lastTimerValue = timerValue;
-
-        // Calculate and store multiplier
-        _currentMultiplier = _calculateMultiplier(stepInterval);
-
-        return (result == DIR_CW) ? _currentMultiplier : -_currentMultiplier;
+        _currentShift = _calculateShift(stepInterval);
+        result.shift = _currentShift;
     }
 
-    return 0;  // No movement
+    return result;
 }

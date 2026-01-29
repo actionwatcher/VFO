@@ -13,6 +13,12 @@
 // Anti-clockwise step.
 #define DIR_CCW 0x20
 
+// Result from processWithSpeed
+struct RotaryResult {
+    uint8_t direction;  // DIR_NONE, DIR_CW, or DIR_CCW
+    uint8_t shift;      // Shift amount for << operator
+};
+
 class Rotary
 {
 public:
@@ -20,13 +26,10 @@ public:
     // Process pin(s)
     uint8_t process(const uint8_t val);
 
-    // Process with velocity-based multiplier
+    // Process with velocity-based shift amount
     // timerValue: current timer counter value (e.g., TCNT1)
-    // Returns: signed multiplier (positive for CW, negative for CCW, 0 for no movement)
-    int16_t processWithSpeed(const uint8_t val, uint16_t timerValue);
-
-    // Get current speed multiplier (for debugging)
-    uint16_t getMultiplier() const { return _currentMultiplier; }
+    // Returns: RotaryResult with direction and shift
+    RotaryResult processWithSpeed(const uint8_t val, uint16_t timerValue);
 
 private:
     // State machine state
@@ -36,7 +39,7 @@ private:
 
     // Velocity tracking
     uint16_t _lastTimerValue;
-    uint16_t _currentMultiplier;
+    uint8_t _currentShift;
 
     // Encoder pulses per revolution (PPR)
     uint16_t _pulsesPerRev;
@@ -55,14 +58,14 @@ private:
     const uint16_t _thresholdFast;
     const uint16_t _thresholdVeryFast;
 
-    // Speed multipliers
-    static constexpr uint16_t MULT_SLOW = 1;
-    static constexpr uint16_t MULT_MEDIUM = 5;
-    static constexpr uint16_t MULT_FAST = 20;
-    static constexpr uint16_t MULT_VERY_FAST = 100;
+    // Speed shift amounts (powers of 2: 1, 2, 4, 8, 16)
+    static constexpr uint8_t SHIFT_SLOW = 0;       // 1x
+    static constexpr uint8_t SHIFT_MEDIUM = 2;     // 2x
+    static constexpr uint8_t SHIFT_FAST = 5;       // 4x
+    static constexpr uint8_t SHIFT_VERY_FAST = 7;  // 16x
 
-    // Calculate multiplier based on step interval
-    uint16_t _calculateMultiplier(uint16_t stepInterval);
+    // Calculate shift amount based on step interval
+    uint8_t _calculateShift(uint16_t stepInterval);
 };
 
 #endif
