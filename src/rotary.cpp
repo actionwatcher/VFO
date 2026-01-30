@@ -113,7 +113,6 @@ Rotary::Rotary(char pin1, char pin2, uint16_t ppr)
     , _lastTimerValue(0)
     , _currentShift(SHIFT_SLOW)
     , _pulsesPerRev(ppr)
-    , _thresholdSlow((uint32_t)BASE_THRESHOLD_SLOW * BASE_PPR / ppr)
     , _thresholdMedium((uint32_t)BASE_THRESHOLD_MEDIUM * BASE_PPR / ppr)
     , _thresholdFast((uint32_t)BASE_THRESHOLD_FAST * BASE_PPR / ppr)
     , _thresholdVeryFast((uint32_t)BASE_THRESHOLD_VERY_FAST * BASE_PPR / ppr)
@@ -144,16 +143,12 @@ uint8_t Rotary::process(const uint8_t val) {
  */
 uint8_t Rotary::_calculateShift(uint16_t stepInterval) {
     if (stepInterval < _thresholdVeryFast) {
-        Serial.println("Very Fast");
-        return SHIFT_VERY_FAST;  // 16x
+        return SHIFT_VERY_FAST;  // 128x
     } else if (stepInterval < _thresholdFast) {
-        Serial.println("Fast");
-        return SHIFT_FAST;       // 4x
+        return SHIFT_FAST;       // 32x
     } else if (stepInterval < _thresholdMedium) {
-        Serial.println("Medium");
-        return SHIFT_MEDIUM;     // 2x
+        return SHIFT_MEDIUM;     // 4x
     } else {
-        Serial.println("Slow");
         return SHIFT_SLOW;       // 1x
     }
 }

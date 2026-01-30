@@ -31,6 +31,7 @@ struct VFOState {
     bool tuneActive;
     volatile uint16_t keyPressTime;
     volatile bool txDelayActive;
+    volatile uint8_t lastShift;  // For display debugging
 };
 
 extern VFOState state;

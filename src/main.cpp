@@ -34,7 +34,8 @@ VFOState state = {
     .buttonChangeTime = 0,
     .tuneActive = false,
     .keyPressTime = 0,
-    .txDelayActive = false
+    .txDelayActive = false,
+    .lastShift = 0
 };
 
 SSD1306AsciiWire oled;
@@ -44,8 +45,8 @@ uint8_t displayPrecision = 3;
 
 // Timer1 configuration
 constexpr uint32_t F_CPU_HZ = 16000000UL;
-constexpr uint8_t TIMER1_PRESCALER = 8;
-constexpr uint32_t TIMER1_FREQ = F_CPU_HZ / TIMER1_PRESCALER;  // 2MHz
+constexpr uint16_t TIMER1_PRESCALER = 256;
+constexpr uint32_t TIMER1_FREQ = F_CPU_HZ / TIMER1_PRESCALER;  // 62.5kHz
 constexpr uint16_t TX_DELAY_MS = 50;
 constexpr uint32_t TX_DELAY_TICKS_FULL = (TIMER1_FREQ / 1000UL) * TX_DELAY_MS;
 const uint16_t TX_DELAY_TICKS = (uint16_t)(TX_DELAY_TICKS_FULL & 0xFFFF);
@@ -116,7 +117,7 @@ void setup() {
     // Initialize Timer1 for velocity tracking
     TCCR1A = 0;
     TCCR1B = 0;
-    TCCR1B = (1 << CS11);  // Prescaler 8: 16MHz / 8 = 2MHz
+    TCCR1B = (1 << CS12);  // Prescaler 256: 16MHz / 256 = 62.5kHz
     TCNT1 = 0;
 
     // Enable interrupts on the CLK, DT, and KEY pins
@@ -158,8 +159,10 @@ ISR(PCINT2_vect) {
     RotaryResult r = rotary.processWithSpeed(val, TCNT1);
     if (r.direction == DIR_CW) {
         state.currentFreq += bands[state.currentBand].deltaFreq << r.shift;
+        state.lastShift = r.shift;
     } else if (r.direction == DIR_CCW) {
         state.currentFreq -= bands[state.currentBand].deltaFreq << r.shift;
+        state.lastShift = r.shift;
     }
 }
 

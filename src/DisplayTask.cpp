@@ -44,7 +44,11 @@ task_state_t displayTask() {
         // Display band name
         oled.setCursor(0, 0);
         oled.print(bands[state.currentBand].name);
-        oled.print("  ");  // Clear any leftover characters
+        oled.print("  ");
+        // Display shift multiplier (1 << shift)
+        oled.setCursor(80, 0);
+        oled.print(1 << state.lastShift);
+        oled.print("x  ");
     }
 
     return task_state_t::kYeilding;
