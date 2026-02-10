@@ -16,7 +16,7 @@ task_state_t keyTask() {
         if (state.prevKeyState) {
             // Key released - going to RX mode
             si5351.output_enable(SI5351_CLK0, 0);  // Stop signal generation
-            digitalWrite(TRANSMIT_PIN, LOW);        // TRANSMIT pin LOW
+            digitalWrite(PTT_PIN, LOW);        // TRANSMIT pin LOW
             state.txDelayActive = false;
             oled.setCursor(0, 0);
             oled.print("RX  ");
@@ -33,7 +33,7 @@ task_state_t keyTask() {
     // Unsigned arithmetic handles timer overflow automatically
     if (state.txDelayActive && ((uint16_t)(TCNT1 - state.keyPressTime) >= TX_DELAY_TICKS)) {
         state.txDelayActive = false;
-        digitalWrite(TRANSMIT_PIN, HIGH);       // TRANSMIT pin HIGH
+        digitalWrite(PTT_PIN, HIGH);       // TRANSMIT pin HIGH
         si5351.output_enable(SI5351_CLK0, 1);   // Start signal generation
     }
 

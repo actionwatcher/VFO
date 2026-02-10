@@ -108,8 +108,8 @@ void setup() {
     pinMode(KEY, INPUT_PULLUP);
 
     // Set TRANSMIT pin as output
-    pinMode(TRANSMIT_PIN, OUTPUT);
-    digitalWrite(TRANSMIT_PIN, LOW);  // Start in RX mode
+    pinMode(PTT_PIN, OUTPUT);
+    digitalWrite(PTT_PIN, LOW);  // Start in RX mode
 
     // Setup Serial Monitor
     Serial.begin(9600);
