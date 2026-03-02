@@ -7,7 +7,10 @@ enum ButtonPress {
     BTN_NONE,
     BTN_BAND_UP,
     BTN_BAND_DOWN,
-    BTN_TUNE
+    BTN_TUNE,
+    BTN_RESERVED_1,
+    BTN_RESERVED_2,
+    BTN_RESERVED_3
 };
 
 // Band structure
