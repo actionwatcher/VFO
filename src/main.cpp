@@ -94,6 +94,15 @@ void loadAllBandsFromEEPROM() {
     loadCurrentBandFromEEPROM();
 }
 
+void displayError(const char* message) {
+    oled.clear();
+    oled.setCursor(0, 0);
+    oled.print("ERROR:");
+    oled.set1X();
+    oled.setCursor(0, 2);
+    oled.print(message);
+    while (true);
+}
 // Task function declarations
 extern task_state_t buttonTask();
 extern task_state_t bandTask();
@@ -139,10 +148,10 @@ void setup() {
 
     bool success = si5351.init(SI5351_CRYSTAL_LOAD_8PF, 0, 0);
     if (!success) {
-        Serial.println("Si5351 Init failed");
-        while (1);
+        displayError("Si5351 Init failed");
     }
     si5351.set_freq(state.currentFreq, SI5351_CLK0);
+    // si5351.drive_strength(SI5351_CLK0, SI5351_DRIVE_2MA); // This is the default, so no need to set it explicitly
 
     // Register tasks
     addTask(buttonTask);
