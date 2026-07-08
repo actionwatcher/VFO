@@ -1,11 +1,10 @@
 #include "task.h"
 #include "VFOState.h"
 #include "pinout.h"
-#include "si5351.h"
+#include "DDS.h"
 #include "SSD1306Ascii.h"
 #include "SSD1306AsciiWire.h"
 
-extern Si5351 si5351;
 extern SSD1306AsciiWire oled;
 
 task_state_t keyTask() {
@@ -15,7 +14,7 @@ task_state_t keyTask() {
 
         if (state.prevKeyState) {
             // Key released - going to RX mode
-            si5351.output_enable(SI5351_CLK0, 0);  // Stop signal generation
+            dds.enable(false);  // Stop signal generation
             digitalWrite(PTT_PIN, LOW);        // TRANSMIT pin LOW
             state.txDelayActive = false;
             oled.setCursor(0, 0);
@@ -34,7 +33,7 @@ task_state_t keyTask() {
     if (state.txDelayActive && ((uint16_t)(TCNT1 - state.keyPressTime) >= TX_DELAY_TICKS)) {
         state.txDelayActive = false;
         digitalWrite(PTT_PIN, HIGH);       // TRANSMIT pin HIGH
-        si5351.output_enable(SI5351_CLK0, 1);   // Start signal generation
+        dds.enable(true);   // Start signal generation
     }
 
     return task_state_t::kYeilding;

@@ -1,10 +1,9 @@
 #include "task.h"
 #include "VFOState.h"
-#include "si5351.h"
+#include "DDS.h"
 #include "SSD1306Ascii.h"
 #include "SSD1306AsciiWire.h"
 
-extern Si5351 si5351;
 extern SSD1306AsciiWire oled;
 extern uint8_t displayPrecision;
 
@@ -37,7 +36,7 @@ task_state_t displayTask() {
     if (state.prevFreq != state.currentFreq) {
         state.prevFreq = state.currentFreq;
         bands[state.currentBand].lastFreq = state.currentFreq;  // Update band's last frequency
-        si5351.set_freq(state.currentFreq, SI5351_CLK0);
+        dds.set_freq(state.currentFreq);
         unsigned long displayFreq = state.currentFreq / 100 * bands[state.currentBand].mult;
         oled.setCursor(w, 2);
         oled.print(formatFrequency(displayFreq, displayPrecision));

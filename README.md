@@ -8,6 +8,8 @@ This repo about simulating vintage VFO for tube transmitters. I plan to include 
 
 ## Pin Assignment
 
+### Control and Inputs
+
 | Pin | Function |
 |-----|----------|
 | D2  | Rotary encoder CLK |
@@ -15,6 +17,29 @@ This repo about simulating vintage VFO for tube transmitters. I plan to include 
 | D4  | CW key (INPUT_PULLUP) |
 | D5  | PTT output (HIGH = TX) |
 | A0  | Button array (analog voltage divider) |
+| A4  | I2C SDA (for OLED and Si5351) |
+| A5  | I2C SCL (for OLED and Si5351) |
+
+### AD9850 DDS Connections
+
+When configuring the project for the AD9850 DDS, connect the module as follows:
+
+| Pin | Function |
+|-----|----------|
+| D6  | W_CLK (Word Load Clock) |
+| D7  | FQ_UD (Frequency Update Clock) |
+| D8  | DATA (Serial Data Input, D7 on AD9850) |
+| D9  | RESET (Master Reset) |
+
+## DDS Hardware Selection
+
+The active DDS hardware is configured in [platform.h](file:///Users/arkady/sources/VFO/include/platform.h). Uncomment the appropriate definition for your target chip:
+
+```cpp
+// include/platform.h
+#define DDS_SI5351   // Use Etherkit Si5351
+// #define DDS_AD9850   // Use AD9850 (custom serial driver)
+```
 
 ## Button Circuit
 

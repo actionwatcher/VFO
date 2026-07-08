@@ -3,7 +3,7 @@
 #include <EEPROM.h>
 #include "SSD1306Ascii.h"
 #include "SSD1306AsciiWire.h"
-#include "si5351.h"
+#include "DDS.h"
 
 #include "pinout.h"
 #include "Rotary.h"
@@ -39,7 +39,6 @@ VFOState state = {
 };
 
 SSD1306AsciiWire oled;
-Si5351 si5351;
 Rotary rotary(DT, CLK, 250);  // 250 PPR encoder
 uint8_t displayPrecision = 3;
 
@@ -146,12 +145,11 @@ void setup() {
     oled.clear();
     oled.set2X();
 
-    bool success = si5351.init(SI5351_CRYSTAL_LOAD_8PF, 0, 0);
+    bool success = dds.init();
     if (!success) {
-        displayError("Si5351 Init failed");
+        displayError("DDS Init failed");
     }
-    si5351.set_freq(state.currentFreq, SI5351_CLK0);
-    // si5351.drive_strength(SI5351_CLK0, SI5351_DRIVE_2MA); // This is the default, so no need to set it explicitly
+    dds.set_freq(state.currentFreq);
 
     // Register tasks
     addTask(buttonTask);

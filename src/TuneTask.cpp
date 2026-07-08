@@ -1,8 +1,6 @@
 #include "task.h"
 #include "VFOState.h"
-#include "si5351.h"
-
-extern Si5351 si5351;
+#include "DDS.h"
 
 static ButtonPress lastHandledButton = BTN_NONE;
 
@@ -16,11 +14,11 @@ task_state_t tuneTask() {
 
     if (btn == BTN_TUNE) {
         // TUNE pressed - enable signal immediately (no TRANSMIT pin, no delay)
-        si5351.output_enable(SI5351_CLK0, 1);
+        dds.enable(true);
         state.tuneActive = true;
     } else if (state.tuneActive && btn == BTN_NONE) {
         // TUNE released - disable signal and save frequency
-        si5351.output_enable(SI5351_CLK0, 0);
+        dds.enable(false);
         state.tuneActive = false;
         bands[state.currentBand].lastFreq = state.currentFreq;
         saveBandToEEPROM(state.currentBand);
